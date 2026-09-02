@@ -2,15 +2,26 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import os
 import json
+from functools import partial
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 from cmd_line import parse_args
 from src.trainer.baseline import train, test
 from src.utils.other import *#load_data, load_model, make_model, get_tb_path, get_checkpoint_path, get_args_path, get_experiments_path
 from src.utils.model_utils import init_weights
+
+
+_METRIC_ABBR = {
+    'L recon': 'recon', 'L dx': 'dx', 'L dz': 'dz', 'L regularization': 'reg',
+    'KLD': 'kld',
+}
+
+
+def _fmt_metrics(split, epoch, metrics):
+    body = "  ".join(f"{_METRIC_ABBR.get(k, k)}={v:.3e}" for k, v in metrics.items())
+    return f"[epoch {epoch:4d}] {split:5s} {body}"
 
 
 def main():
@@ -24,10 +35,11 @@ def main():
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=1)
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True, num_workers=1)
 
-    # boards
-    train_name, test_name = get_tb_path(args)
-    train_board = SummaryWriter(train_name, purge_step=True)
-    test_board = SummaryWriter(test_name, purge_step=True)
+    # experiment logging (wandb)
+    run_name = get_general_path(args).strip('/').replace('/', '_')
+    wandb_on = init_wandb(args, run_name)
+    train_log = partial(log_metrics, 'train', enabled=wandb_on)
+    test_log = partial(log_metrics, 'val', enabled=wandb_on)
 
     # device
     torch.cuda.set_device(args.device)
@@ -44,7 +56,7 @@ def main():
     if args.print_folder == 1:
         print("Checkpoints saved at:        ", cp_folder)
         print("Experiment results saved at: ", exp_folder)
-        print("Tensorboard logs saved at:   ", train_name[:-5])
+        print("wandb logging:               ", args.wandb_mode if wandb_on else "off")
 
     # save args
     with open(args_path, 'w') as f:
@@ -68,12 +80,14 @@ def main():
     # for each epoch
     for epoch in tqdm(range(args.epochs), desc="Epoch", total=args.epochs, dynamic_ncols=True):
         # train
-        train(net, train_loader, train_board, optim, epoch + initial_e, args.clip, lambdas)
+        train_metrics = train(net, train_loader, train_log, optim, epoch + initial_e, args.clip, lambdas)
+        tqdm.write(_fmt_metrics('train', epoch + initial_e, train_metrics))
 
         # test
         if (epoch + 1) % args.test_interval == 0:
-            test(net, test_loader, test_board, epoch + initial_e, args.timesteps, lambdas)
-        
+            test_metrics = test(net, test_loader, test_log, epoch + initial_e, args.timesteps, lambdas)
+            tqdm.write(_fmt_metrics('val', epoch + initial_e, test_metrics))
+
         # step on learning rate scheduler
         scheduler.step()
     
@@ -84,7 +98,11 @@ def main():
                           'optimizer': optim.state_dict(),
                           'scheduler': scheduler.state_dict()}
             torch.save(checkpoint, cp_path)
-        
+
+    if wandb_on:
+        import wandb
+        wandb.finish()
+
 
 if __name__ == "__main__":
     main()

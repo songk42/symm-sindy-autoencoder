@@ -12,9 +12,15 @@ def parse_args():
     parser.add_argument('-M',  '--model', default="SINDyVAE", type=str, help="Model to use (SINDyAE, SINDyAE")
     parser.add_argument('-EX', '--experiments', default='./experiments/', type=str, help="Output folder for experiments")
     parser.add_argument('-MF', '--model_folder', default='./trained_models/', type=str, help="Output folder for experiments")
-    parser.add_argument('-TB', '--tensorboard_folder', default='./tb_runs/', type=str, help="Output folder for tensorboard")
+    parser.add_argument('-TB', '--tensorboard_folder', default='./tb_runs/', type=str, help="(legacy) output folder for the tensorboard run-name derivation")
     parser.add_argument('-DT', '--data_set', default='lorenz', type=str, help="Which dataset to use (lorenz)")
-    
+
+    # logging (wandb)
+    parser.add_argument('-WM', '--wandb_mode', default='online', type=str, choices=['online', 'offline', 'disabled'], help="wandb logging mode; 'offline' logs to disk for later 'wandb sync', 'disabled' turns logging off")
+    parser.add_argument('-WP', '--wandb_project', default='symm-sindy-ae', type=str, help="wandb project name")
+    parser.add_argument('-WE', '--wandb_entity', default=None, type=str, help="wandb entity (team/user); None uses the default for the logged-in account")
+    parser.add_argument('-WT', '--wandb_tags', default=None, type=str, help="comma-separated wandb tags")
+
     # network parameters
     parser.add_argument('-Z', '--z_dim', default=3, type=int, help="Size of latent vector")
     parser.add_argument('-U',  '--u_dim', default=128, type=int, help="Sise of u vector in Lorenz data")
