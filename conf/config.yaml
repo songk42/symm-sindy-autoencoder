@@ -1,0 +1,86 @@
+# Hydra config for symm-sindy-autoencoder.
+#
+# Flat by design: every key here is read as `args.<key>` throughout the
+# codebase (main.py, create_synth.py, phase_d_eval.py, coordinate_diagnostic.py,
+# koopman_diagnostic.py, ...), unchanged from the old argparse Namespace. Do
+# NOT nest these under config groups (e.g. model:, training:) without also
+# updating every `args.<key>` / `getattr(args, "<key>", ...)` call site.
+#
+# Override on the command line with Hydra's key=value syntax, e.g.:
+#   python3 main.py data_set=synth z_dim=2 lambda_dx=0.01 session_name=my_run
+# (old argparse flags like `-DT synth -Z 2 -L1 1e-2 -sess my_run` no longer work)
+
+# anything that affects the name of the saved folders (for checkpoints, experiments, tensorboard)
+# path saved as: initial_folder/data_set/model/session_name
+# where initial_folder is experiments, model_folder, or tensorboard_folder
+session_name: "7-27-2022_1"        # Session name
+model: SINDyAE                     # Model to use (SINDyAE, SINDyVAE)
+experiments: ./experiments/        # Output folder for experiments
+model_folder: ./trained_models/    # Output folder for experiments
+tensorboard_folder: ./tb_runs/     # (legacy) output folder for the tensorboard run-name derivation
+data_set: lorenz                   # Which dataset to use: lorenz | synth | lorenz_distort
+
+# logging (wandb)
+wandb_mode: online                 # online | offline | disabled
+wandb_project: symm-sindy-ae       # wandb project name
+wandb_entity: null                 # wandb entity (team/user); null uses the default for the logged-in account
+wandb_tags: null                   # comma-separated wandb tags
+
+# network parameters
+z_dim: 3                           # Latent dimension (size of z = E(x); lorenz uses 3, synth requires 2)
+u_dim: 128                         # Observed dimension (size of x)
+hidden_dim: 64                     # Dimension of hidden layers in autoencoder
+poly_order: 3                      # Highest polynomial degree to include in library
+use_sine: false                    # Iff true, includes sine function in library
+include_constant: true             # Iff true, includes constant term in library
+nonlinearity: elu                  # Autoencoder activation. Analytic (recommended): tanh, sin, sig, elu. Also: relu, null (linear).
+model_order: 1                     # Determines whether model predicts 1st or 2nd order derivatives (values: 1, 2)
+spectral_norm: 0                   # Iff 1, spectral-normalize the autoencoder linear layers (bi-Lipschitz control of the coordinate map)
+linear_encoder: 0                  # Iff 1, the ENCODER is a pure linear map (no activations); the decoder keeps `nonlinearity`.
+
+# training parameters
+epochs: 100                        # Number of epochs to train for
+learning_rate: 0.001               # Learning rate
+adam_regularization: 0.00001       # Regularization to use in ADAM optimizer
+gamma_factor: 0.995                # Learning rate decay factor
+batch_size: 50                     # Batch size
+lambda_dx: 0.0001                  # Weight of dx loss
+lambda_dz: 0                       # Weight of dz loss
+lambda_reg: 0.00001                # Weight of regularization loss
+lambda_gauge: 0.1                  # Weight of the gauge penalty ||cov(z) - I||^2
+gauge_warmup_epochs: 0             # Linearly ramp lambda_gauge from 0 to its full value over this many epochs (0 disables)
+lambda_jacobian: 0.0               # Weight of the Jacobian-non-constancy penalty (0 disables)
+jac_warmup_epochs: 0               # Linearly ramp lambda_jacobian from 0 over this many epochs (0 disables)
+jac_probes: 4                      # Number of random probe directions per batch for the Jacobian-non-constancy penalty
+
+# Phase C: learned discrete-symmetry generators
+n_generators: 0                    # Number of learned symmetry generators T_k in SO(z_dim) (0 disables Phase C)
+symmetry_order: 2                  # Target finite order p of each generator (T_k^p = I); 2 = involution/reflection
+lambda_equiv: 0.0                  # Weight of the intertwining residual ||C(T)Xi - Xi T^T||^2
+lambda_order: 0.0                  # Weight of the finite-order penalty ||T^p - I||^2
+lambda_repel: 0.0                  # Weight of the anti-triviality penalty 1/||T - I||^2
+equiv_warmup_epochs: 0             # Linearly ramp the Phase C penalties from 0 over this many epochs (0 disables)
+recon_pretrain_epochs: 0           # Train on reconstruction ONLY for this many epochs before the main loop (0 disables)
+rp_freeze_encoder: 1               # With recon_pretrain_epochs > 0: freeze the encoder after the recon pretrain
+gen_init_scale: 1.0                # Std of the generator parameter init; larger => T starts further from identity
+freeze_generators: 0               # Iff 1, pin each generator at the canonical pi-rotation and only train the encoder
+kinematic_row: 0                   # Iff 1, pin the first latent's velocity to zdot_1 = z_2 (Duffing/pendulum only, NOT Lorenz)
+clip: null                         # Gradient clipping value during training (null for no clipping)
+test_interval: 1                   # Epoch interval to evaluate on val (test) data during training
+checkpoint_interval: 1             # Epoch interval to save model during training
+sequential_threshold: 0.05         # Sequential thresholding value for coefficients
+beta: 1.0                          # Weighting of KL divergence for SINDyVAE
+
+# lorenz / synth dataset parameters
+train_initial_conds: 2048          # Number of initial conditions in the training set
+val_initial_conds: 20              # Number of initial conditions in the validation set
+test_initial_conds: 100            # Number of initial conditions in the test set
+noise_strength: 0                  # Additive Gaussian noise on x / dx at dataset-generation time. 0 for no noise
+psi_scale: 1.0                     # Weight scale of the random tanh-MLP observation map psi (synth / lorenz_distort)
+timesteps: 250                     # Number of timesteps per trajectory
+
+# other
+baseline_session: null             # Phase D only: session name of an unconstrained model to use as the baseline
+load_cp: 0                         # If 1, loads the model from the checkpoint. If 0, does not
+device: 1                          # Which GPU to use
+print_folder: 1                    # Iff true, prints the folder for different logs
