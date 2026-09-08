@@ -70,7 +70,7 @@ class InducedLibraryRep:
     """
 
     def __init__(self, d, poly_order, include_constant=True, use_sine=False,
-                 n_samples=None, seed=0, device="cpu", dtype=torch.float64):
+                 n_samples=None, seed=0, device="cpu", dtype=torch.float32):
         if use_sine:
             raise ValueError("Phase C needs a polynomial library (use_sine=False)")
         self.d = d

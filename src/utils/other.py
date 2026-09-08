@@ -1,4 +1,24 @@
+import torch
+
 from src.dataset.Datasets import *
+
+
+def get_device(args):
+    """Resolve args.device to a torch.device.
+
+    Accepts a CUDA index (int, or numeric string, e.g. 0), "cpu", "mps", or a
+    negative index (falls back to CPU) -- so runs work on machines without an
+    NVIDIA GPU (e.g. Apple Silicon via "mps", or "cpu" anywhere).
+    """
+    d = getattr(args, "device", -1)
+    if isinstance(d, str):
+        d = d.strip().lower()
+        if d in ("cpu", "mps"):
+            return torch.device(d)
+        d = int(d)
+    if d < 0:
+        return torch.device("cpu")
+    return torch.device(f"cuda:{d}")
 
 
 def log_metrics(prefix, metrics, step, enabled=True):
@@ -69,7 +89,7 @@ def load_data(args):
     return train_set, val_set, test_set
 
 def load_model(net, cp_path, device, optim=None, scheduler=None):
-    checkpoint = torch.load(cp_path, map_location="cuda:" + str(device))
+    checkpoint = torch.load(cp_path, map_location=device)
     net.load_state_dict(checkpoint['model'])
     net.to(device)
     if optim is not None:

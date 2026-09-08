@@ -42,8 +42,9 @@ def main():
     test_log = partial(log_metrics, 'val', enabled=wandb_on)
 
     # device
-    torch.cuda.set_device(args.device)
-    device = torch.cuda.current_device()
+    device = get_device(args)
+    if device.type == "cuda":
+        torch.cuda.set_device(device)
 
     # checkpoint, args, experiments path
     cp_path, cp_folder = get_checkpoint_path(args)

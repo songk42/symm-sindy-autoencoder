@@ -7,7 +7,8 @@ coordinate-problem checkpoint.
         n_generators=1 symmetry_order=2 freeze_generators=1 \
         session_name=phaseC_frozen_v3 baseline_session=dzfit_synth device=-1
 
-device=-1 runs on CPU. The CLI overrides must describe the ARCHITECTURE of the
+device=-1 runs on CPU, device=mps runs on Apple Silicon GPU, device=N runs on
+CUDA device N. The CLI overrides must describe the ARCHITECTURE of the
 session_name checkpoint (so the model can be rebuilt); baseline_session names
 an unconstrained model of the same architecture whose args.txt is read for its
 own config. Uses the TEST split, which was untouched by training and by the
@@ -23,7 +24,7 @@ import torch
 from cmd_line import parse_args
 from src.utils.other import (get_synth_path, get_lorenz_path,
                              get_lorenz_distort_path, get_cylinder_path,
-                             get_checkpoint_path, make_model)
+                             get_checkpoint_path, make_model, get_device)
 from src.utils.phase_d import run_phase_d, true_duffing_coeffs
 
 
@@ -74,7 +75,7 @@ def _baseline(args, device):
 
 def main():
     args = parse_args()
-    device = "cpu" if args.device < 0 else f"cuda:{args.device}"
+    device = get_device(args)
 
     _, paths = _PATHS[args.data_set]()
     test_data = np.load(paths[2], allow_pickle=True).item()   # TEST split

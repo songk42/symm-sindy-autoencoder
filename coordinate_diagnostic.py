@@ -4,7 +4,8 @@ Phase A coordinate-map diagnostic on a trained checkpoint.
     python3 coordinate_diagnostic.py data_set=synth z_dim=2 u_dim=64 timesteps=200 \
         session_name=<session> model=SINDyAE nonlinearity=tanh spectral_norm=1 device=-1
 
-device=-1 runs on CPU (login node has no GPU). Reads the checkpoint written by
+device=-1 runs on CPU (login node has no GPU), device=mps runs on Apple
+Silicon GPU. Reads the checkpoint written by
 main.py at trained_models/<data_set>/<model>/<session_name>/checkpoint.pt.
 """
 
@@ -14,7 +15,7 @@ import torch
 from cmd_line import parse_args
 from src.utils.other import (get_synth_path, get_lorenz_path,
                              get_lorenz_distort_path, get_cylinder_path,
-                             get_checkpoint_path, make_model)
+                             get_checkpoint_path, make_model, get_device)
 from src.utils.coordinate_diagnostic import run_diagnostic
 
 
@@ -34,7 +35,7 @@ _PATHS = {"synth": get_synth_path, "lorenz": get_lorenz_path,
 
 def main():
     args = parse_args()
-    device = "cpu" if args.device < 0 else f"cuda:{args.device}"
+    device = get_device(args)
 
     _, paths = _PATHS[args.data_set]()
     data = np.load(paths[1], allow_pickle=True).item()   # val split

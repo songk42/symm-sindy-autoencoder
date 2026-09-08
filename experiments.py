@@ -24,8 +24,9 @@ def main():
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     # device
-    torch.cuda.set_device(args.device)
-    device = torch.cuda.current_device()
+    device = get_device(args)
+    if device.type == "cuda":
+        torch.cuda.set_device(device)
 
     # checkpoint, args, experiments path
     cp_path, cp_folder = get_checkpoint_path(args)
