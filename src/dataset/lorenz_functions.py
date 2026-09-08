@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from scipy.integrate import odeint
 from scipy.special import legendre, chebyt
 from src.utils.model_utils import library_size
@@ -6,6 +7,73 @@ from src.utils.model_utils import library_size
 
 # Code taken from:
 # https://github.com/kpchamp/SindyAutoencoders/blob/master/examples/lorenz/example_lorenz.py
+
+
+# --------------------------------------------------------------------------- #
+# distorted-Lorenz "coordinate problem" testbed
+# --------------------------------------------------------------------------- #
+# The Champion Legendre lift (generate_lorenz_data) commutes with a linear
+# sign-flip action on x, so the Z2 symmetry is already linear in the observed
+# coordinates -- too easy. Here we instead push the (normalised) Lorenz state
+# through the same fixed random tanh MLP used for the synth Duffing testbed, so
+# S = diag(-1,-1,1) is linear in z but nonlinear in x. This is the 3D,
+# mixed-parity analogue of get_duffing_data.
+
+LORENZ_DIM = 3
+_LORENZ_NORM = np.array([1 / 40.0, 1 / 40.0, 1 / 40.0])   # keeps psi input O(1)
+
+
+def get_lorenz_distorted(n_ics, timesteps=250, u_dim=64, dt=0.02,
+                         noise_strength=0.0, psi_seed=0, ic_seed=None,
+                         sigma=10.0, beta=8 / 3, rho=28.0, distort=True,
+                         psi_scale=1.0):
+    """Lorenz-63 latent, observed through an unknown nonlinear map.
+
+    Returns a dict {'x','dx','dz','z'} flattened to (n_ics*timesteps, dim),
+    matching get_duffing_data. z / dz are the *normalised* Lorenz state
+    (multiplied by 1/40), so the target latent has O(1) scale and the true
+    SINDy coefficients are lorenz_coefficients(_LORENZ_NORM).
+    """
+    from src.dataset.synth_functions import _PsiMLP
+
+    rng = np.random.RandomState(ic_seed)
+    t = np.arange(timesteps) * dt
+    ic_means = np.array([0.0, 0.0, 25.0])
+    ic_widths = 2 * np.array([36.0, 48.0, 41.0])
+    ics = ic_widths * (rng.rand(n_ics, 3) - 0.5) + ic_means
+
+    z = np.zeros((n_ics, timesteps, LORENZ_DIM))
+    dz = np.zeros_like(z)
+    for i in range(n_ics):
+        zi, dzi, _ = simulate_lorenz(ics[i], t, sigma=sigma, beta=beta, rho=rho)
+        z[i], dz[i] = zi, dzi
+    z *= _LORENZ_NORM
+    dz *= _LORENZ_NORM
+
+    z_flat = torch.tensor(z.reshape(-1, LORENZ_DIM), dtype=torch.float32)
+    dz_flat = torch.tensor(dz.reshape(-1, LORENZ_DIM), dtype=torch.float32)
+
+    if distort:
+        psi = _PsiMLP(LORENZ_DIM, u_dim, seed=psi_seed, scale=psi_scale)
+        x_flat, dx_flat = torch.autograd.functional.jvp(psi, z_flat, dz_flat)
+        x_flat = x_flat.detach().numpy()
+        dx_flat = dx_flat.detach().numpy()
+    else:
+        x_flat = np.zeros((z_flat.shape[0], u_dim), dtype=np.float32)
+        dx_flat = np.zeros_like(x_flat)
+        x_flat[:, :LORENZ_DIM] = z_flat.numpy()
+        dx_flat[:, :LORENZ_DIM] = dz_flat.numpy()
+
+    if noise_strength:
+        x_flat = x_flat + noise_strength * rng.randn(*x_flat.shape)
+        dx_flat = dx_flat + noise_strength * rng.randn(*dx_flat.shape)
+
+    return {
+        'x': x_flat.astype(np.float32),
+        'dx': dx_flat.astype(np.float32),
+        'dz': dz.reshape(-1, LORENZ_DIM).astype(np.float32),
+        'z': z.reshape(-1, LORENZ_DIM).astype(np.float32),
+    }
 
 
 def get_lorenz_data(n_ics, noise_strength=0):

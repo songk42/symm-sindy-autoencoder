@@ -15,7 +15,7 @@ from src.utils.model_utils import init_weights
 
 _METRIC_ABBR = {
     'L recon': 'recon', 'L dx': 'dx', 'L dz': 'dz', 'L regularization': 'reg',
-    'KLD': 'kld',
+    'L gauge': 'gauge', 'L equiv': 'equiv', 'L jac': 'jac', 'KLD': 'kld',
 }
 
 
@@ -74,11 +74,45 @@ def main():
     else:  # init network
         net.apply(init_weights)
 
-    # lambdas for loss function
-    lambdas = args.lambda_dx, args.lambda_dz, args.lambda_reg
+    # optional recon-only pretrain: settle the autoencoder onto the
+    # variance-carrying (true) coordinate subspace before the dynamics /
+    # symmetry losses can hijack the projection choice
+    _orig_st = net.sequential_threshold
+    n_pre = int(getattr(args, 'recon_pretrain_epochs', 0))
+    freeze_enc = n_pre > 0 and int(getattr(args, 'rp_freeze_encoder', 1))
+    total_epochs = n_pre + args.epochs
 
     # for each epoch
-    for epoch in tqdm(range(args.epochs), desc="Epoch", total=args.epochs, dynamic_ncols=True):
+    for epoch in tqdm(range(total_epochs), desc="Epoch", total=total_epochs, dynamic_ncols=True):
+        pretrain = epoch < n_pre
+        eff = epoch - n_pre                       # warmup clock starts after pretrain
+
+        if freeze_enc and epoch == n_pre:         # lock the recon-optimal chart
+            for p in net.encoder.parameters():
+                p.requires_grad_(False)
+            tqdm.write(f"[recon-pretrain] encoder frozen after {n_pre} epochs")
+
+        # gauge and equivariance penalties are ramped linearly over their warmup
+        # windows so the autoencoder can settle into a coordinate frame before
+        # being pushed towards unit latent covariance / a linear symmetry action
+        def _warm(warmup):
+            return 1.0 if warmup <= 0 else min(1.0, (eff + 1) / warmup)
+
+        if pretrain:
+            net.sequential_threshold = 0.0       # don't prune un-trained Xi
+            lambdas = (0.0,) * 8                  # recon only
+        else:
+            net.sequential_threshold = _orig_st
+            gauge_scale = _warm(args.gauge_warmup_epochs)
+            equiv_scale = _warm(args.equiv_warmup_epochs)
+            jac_scale = _warm(args.jac_warmup_epochs)
+            lambdas = (args.lambda_dx, args.lambda_dz, args.lambda_reg,
+                       gauge_scale * args.lambda_gauge,
+                       equiv_scale * args.lambda_equiv,
+                       equiv_scale * args.lambda_order,
+                       equiv_scale * args.lambda_repel,
+                       jac_scale * args.lambda_jacobian)
+
         # train
         train_metrics = train(net, train_loader, train_log, optim, epoch + initial_e, args.clip, lambdas)
         tqdm.write(_fmt_metrics('train', epoch + initial_e, train_metrics))
@@ -88,8 +122,9 @@ def main():
             test_metrics = test(net, test_loader, test_log, epoch + initial_e, args.timesteps, lambdas)
             tqdm.write(_fmt_metrics('val', epoch + initial_e, test_metrics))
 
-        # step on learning rate scheduler
-        scheduler.step()
+        # step on learning rate scheduler (not during recon pretrain)
+        if not pretrain:
+            scheduler.step()
     
         # save checkpoint
         if (epoch + 1) % args.checkpoint_interval == 0:

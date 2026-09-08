@@ -24,7 +24,7 @@ def sindy_library(X, poly_order, device, include_sine=False, include_constant=Tr
     # timesteps x latent dim
     m, n = X.shape
     l = library_size(n, poly_order, include_sine, include_constant)
-    library = torch.ones((m,l), device=device)
+    library = torch.ones((m,l), device=device, dtype=X.dtype)
     index = 1
 
     for i in range(n):

@@ -1,5 +1,49 @@
 from src.dataset.Datasets import *
 
+
+def log_metrics(prefix, metrics, step, enabled=True):
+    """Log a dict of scalars to wandb under a "<prefix>/" namespace.
+
+    A no-op when wandb logging is disabled / not initialised. Bind the first
+    two args with functools.partial to hand the trainer a simple callable:
+        train_log = partial(log_metrics, 'train', enabled=wandb_on)
+        train_log({'L recon': ...}, epoch)
+    """
+    if not enabled:
+        return
+    import wandb
+    if wandb.run is None:
+        return
+    wandb.log({f"{prefix}/{tag}": value for tag, value in metrics.items()},
+              step=int(step))
+
+
+def init_wandb(args, run_name):
+    """Start a wandb run according to args.wandb_mode. Returns True if logging
+    is active. Missing wandb or mode='disabled' -> returns False, no crash."""
+    mode = getattr(args, 'wandb_mode', 'online')
+    if mode == 'disabled':
+        return False
+    try:
+        import wandb
+    except ImportError:
+        print("[wandb] package not installed; running without experiment logging")
+        return False
+    tags = None
+    if getattr(args, 'wandb_tags', None):
+        tags = [t.strip() for t in args.wandb_tags.split(',') if t.strip()]
+    wandb.init(
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        name=run_name,
+        group=args.data_set,
+        mode=mode,
+        tags=tags,
+        config=vars(args),
+    )
+    return True
+
+
 def load_data(args):
     # train and val data (using val as "test" data)
     if args.data_set == "lorenz":
@@ -7,6 +51,21 @@ def load_data(args):
         train_set = LorenzDataset(args, data_paths[0])
         val_set = LorenzDataset(args, data_paths[1])
         test_set = LorenzDataset(args, data_paths[2])
+    elif args.data_set == "synth":
+        folder, data_paths = get_synth_path()
+        train_set = SynthDataset(args, data_paths[0])
+        val_set = SynthDataset(args, data_paths[1])
+        test_set = SynthDataset(args, data_paths[2])
+    elif args.data_set == "lorenz_distort":
+        folder, data_paths = get_lorenz_distort_path()
+        train_set = SynthDataset(args, data_paths[0])
+        val_set = SynthDataset(args, data_paths[1])
+        test_set = SynthDataset(args, data_paths[2])
+    elif args.data_set == "cylinder":
+        folder, data_paths = get_cylinder_path()
+        train_set = SynthDataset(args, data_paths[0])
+        val_set = SynthDataset(args, data_paths[1])
+        test_set = SynthDataset(args, data_paths[2])
     return train_set, val_set, test_set
 
 def load_model(net, cp_path, device, optim=None, scheduler=None):
@@ -29,6 +88,18 @@ def make_model(args):
 
 def get_lorenz_path():
     folder = "data/lorenz/"
+    return folder, (folder + "train.npy", folder + "val.npy", folder + "test.npy")
+
+def get_synth_path():
+    folder = "data/synth/"
+    return folder, (folder + "train.npy", folder + "val.npy", folder + "test.npy")
+
+def get_lorenz_distort_path():
+    folder = "data/lorenz_distort/"
+    return folder, (folder + "train.npy", folder + "val.npy", folder + "test.npy")
+
+def get_cylinder_path():
+    folder = "data/cylinder/"
     return folder, (folder + "train.npy", folder + "val.npy", folder + "test.npy")
 
 def get_general_path(args):
