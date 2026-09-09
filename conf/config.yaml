@@ -21,7 +21,7 @@ tensorboard_folder: ./tb_runs/     # (legacy) output folder for the tensorboard 
 data_set: lorenz                   # Which dataset to use: lorenz | synth | lorenz_distort
 
 # logging (wandb)
-wandb_mode: online                 # online | offline | disabled
+wandb_mode: offline                 # online | offline | disabled
 wandb_project: symm-sindy-ae       # wandb project name
 wandb_entity: null                 # wandb entity (team/user); null uses the default for the logged-in account
 wandb_tags: null                   # comma-separated wandb tags
